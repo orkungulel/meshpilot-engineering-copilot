@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag"
+version = "0.1.0"
+description = "Question answering over engineering documents, with retrieval evaluation and a small tool-using agent."
+readme = "README.md"
+requires-python = ">=3.11"
+# Exact pins: retrieval numbers depend on library versions (PDF text
+# extraction in particular), so the eval is only reproducible with the
+# same versions.
+dependencies = [
+    "anthropic==1.13.0",
+    "faiss-cpu==1.15.1",
+    "fastapi==0.143.0",
+    "numpy==2.4.6",
+    "pymupdf==1.28.2",
+    "python-dotenv==1.2.4",
+    "uvicorn==0.54.0",
+]
+
+[project.optional-dependencies]
+# The embedding model pulls in torch (large), so it is optional: CI and the
+# unit tests use a fake embedder instead.
+embed = [
+    "sentence-transformers==6.1.0",
+    "torch==2.14.1",
+    "transformers==5.19.0",
+]
+dev = [
+    "httpx==0.28.1",  # used by FastAPI's TestClient
+    "pytest==9.1.1",
+]
+# MeshPilot inference: torch plus what the thesis's diffusion_net library
+# imports. The library itself is copied from the training cluster into the
+# gitignored meshpilot_assets/src, never installed from elsewhere.
+meshpilot = [
+    "potpourri3d==1.4.0",
+    "robust_laplacian==1.1.0",
+    "scikit-learn==1.9.1",
+    "scipy==1.18.1",
+    "torch==2.14.1",
+]
+
+[tool.setuptools]
+packages = ["rag", "meshpilot"]
+
+[tool.setuptools.package-data]
+meshpilot = ["static/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]  # lets tests import their shared fakes

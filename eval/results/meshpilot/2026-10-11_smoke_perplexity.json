@@ -1,0 +1,164 @@
+{
+  "what": "meshpilot.smoke: owner-approved, bounded live runs through the chat code with the Perplexity provider",
+  "derived_from": "the local smoke records listed below; the prediction id was removed, all values unchanged",
+  "runs": [
+    {
+      "local_record_sha256": "44e85921424239eef4f5f669fb553eb6904bd7549675c2b8f463dcc355490608",
+      "time_utc": "2026-10-11T10:11:01+00:00",
+      "provider": "perplexity",
+      "model": "openai/gpt-6-luna",
+      "documents_available": false,
+      "limits": {
+        "max_requests": 6,
+        "max_usd": 0.25,
+        "max_steps": 3
+      },
+      "results": [
+        {
+          "scenario": "supported class",
+          "question": "Show the faces predicted as Fillet.",
+          "expects": "show_predicted_class highlights exactly the 13 faces predicted as Fillet",
+          "outcome": "PASS",
+          "answer": "The viewer highlights the 13 faces predicted as Fillet, arranged in 6 edge-connected patches. These are model predictions, not ground truth or a validated count of features.",
+          "document_citations": [],
+          "geometry": [
+            {
+              "class_name": "Fillet",
+              "face_count": 13,
+              "patch_sizes": [
+                5,
+                3,
+                2,
+                1,
+                1,
+                1
+              ]
+            }
+          ],
+          "tool_calls": [
+            "show_predicted_class({\"class_name\": \"Fillet\"})"
+          ],
+          "model_served": "openai/gpt-6-luna",
+          "usage": {
+            "input_tokens": 1197,
+            "output_tokens": 71
+          }
+        },
+        {
+          "scenario": "unsupported class",
+          "question": "Show the faces predicted as Hole.",
+          "expects": "nothing is highlighted, since the model has no Hole class (read the answer as well)",
+          "outcome": "PASS",
+          "answer": "“Hole” isn’t one of the model’s predicted classes, so I can’t show faces predicted as Hole. The available classes are ExtrudeSide, ExtrudeEnd, CutSide, CutEnd, Fillet, Chamfer, RevolveSide, and RevolveEnd.",
+          "document_citations": [],
+          "geometry": [],
+          "tool_calls": [],
+          "model_served": "openai/gpt-6-luna",
+          "usage": {
+            "input_tokens": 533,
+            "output_tokens": 118
+          }
+        }
+      ],
+      "requests": [
+        {
+          "scenario": "supported class",
+          "worst_case_usd": 0.0007134,
+          "model": "openai/gpt-6-luna",
+          "input_tokens": 534,
+          "output_tokens": 22,
+          "cost_usd": 6e-05,
+          "cost_source": "reported by the provider"
+        },
+        {
+          "scenario": "supported class",
+          "worst_case_usd": 0.0007578999999999999,
+          "model": "openai/gpt-6-luna",
+          "input_tokens": 663,
+          "output_tokens": 49,
+          "cost_usd": 9e-05,
+          "cost_source": "reported by the provider"
+        },
+        {
+          "scenario": "unsupported class",
+          "worst_case_usd": 0.0007132999999999999,
+          "model": "openai/gpt-6-luna",
+          "input_tokens": 533,
+          "output_tokens": 118,
+          "cost_usd": 0.00011,
+          "cost_source": "reported by the provider"
+        }
+      ],
+      "totals": {
+        "requests": 3,
+        "input_tokens": 1730,
+        "output_tokens": 189,
+        "cost_usd": 0.00026
+      },
+      "stopped": null
+    },
+    {
+      "local_record_sha256": "a8712268de7446f2d8ccbff2812c089133e0eaed6aaf4f4ced679a948f155822",
+      "time_utc": "2026-10-11T14:51:06+00:00",
+      "provider": "perplexity",
+      "model": "openai/gpt-6-luna",
+      "documents_available": true,
+      "limits": {
+        "max_requests": 3,
+        "max_usd": 0.05,
+        "max_steps": 3
+      },
+      "results": [
+        {
+          "scenario": "document question",
+          "question": "What does the CutEnd class mean according to the demo notes?",
+          "expects": "the answer cites at least one local document",
+          "outcome": "PASS",
+          "answer": "According to the demo notes, CutEnd means a start or end B-rep face of an extrude operation that removes material. It describes how the face was modelled, not a machining feature.",
+          "document_citations": [
+            {
+              "title": "MeshPilot demo notes (project document, research prototype)",
+              "page": 2
+            }
+          ],
+          "geometry": [],
+          "tool_calls": [
+            "search_documents({\"query\": \"What does the CutEnd class mean according to demo notes? Fusion 360 Gallery segmentation class definition cut end face operation created it.\"})"
+          ],
+          "model_served": "openai/gpt-6-luna",
+          "usage": {
+            "input_tokens": 2294,
+            "output_tokens": 100
+          }
+        }
+      ],
+      "requests": [
+        {
+          "scenario": "document question",
+          "worst_case_usd": 0.0007518,
+          "model": "openai/gpt-6-luna",
+          "input_tokens": 663,
+          "output_tokens": 43,
+          "cost_usd": 9e-05,
+          "cost_source": "reported by the provider"
+        },
+        {
+          "scenario": "document question",
+          "worst_case_usd": 0.00097,
+          "model": "openai/gpt-6-luna",
+          "input_tokens": 1631,
+          "output_tokens": 57,
+          "cost_usd": 0.00023,
+          "cost_source": "reported by the provider"
+        }
+      ],
+      "totals": {
+        "requests": 2,
+        "input_tokens": 2294,
+        "output_tokens": 100,
+        "cost_usd": 0.00032
+      },
+      "stopped": null
+    }
+  ]
+}

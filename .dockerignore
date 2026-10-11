@@ -1,0 +1,25 @@
+# Keep secrets, documents, indexes and development files out of the build context.
+.env
+data/
+.git
+.github
+.venv
+eval/
+tests/
+**/__pycache__
+*.egg-info
+.pytest_cache
+
+# MeshPilot: checkpoints, the copied thesis library, meshes and predictions stay
+# on the owner's machine. Unlike .gitignore, a pattern here without **/ only
+# matches at the top level.
+meshpilot_assets/
+runs_*/
+**/*.pt
+**/*.pth
+**/*.ckpt
+
+# Local tool settings and build output
+.claude/
+build/
+dist/

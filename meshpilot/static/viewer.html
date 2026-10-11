@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeshPilot viewer</title>
+<style>
+  :root {
+    --bg: #eceef1; --surface: #ffffff; --surface-2: #f5f6f8; --text: #1b1f24; --muted: #5d6670; --line: #d8dce1;
+    --accent: #2f5d8a; --on-accent: #ffffff; --viewport: #e4e7eb;
+    --ok-bg: #e2f1e5; --ok: #1d5b2a; --warn-bg: #fcebd0; --warn: #864900; --err-bg: #fbe2df; --err: #8f1d16;
+    --live-bg: #e0ebf7; --live: #1f4f7d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111316; --surface: #1a1d21; --surface-2: #22262b; --text: #e7e9ec; --muted: #9ba3ac; --line: #2f343a;
+      --accent: #8fb6e0; --on-accent: #0e1825; --viewport: #16191c;
+      --ok-bg: #1c3222; --ok: #a5d7af; --warn-bg: #3b2b12; --warn: #efc489; --err-bg: #3a1c1a; --err: #f1a9a3;
+      --live-bg: #1a2b3c; --live: #a8c7e9;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--bg); }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  h2 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  p { margin: 4px 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Layout: a large viewport, a compact chat under it, the inspection panel on the right. */
+  .app { display: grid; height: 100vh; grid-template-columns: minmax(0, 1fr) 360px;
+         grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top" "view side" "chat side"; }
+  header { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px;
+           background: var(--surface); border-bottom: 1px solid var(--line); }
+  #view { grid-area: view; position: relative; min-height: 0; background: var(--viewport); }
+  #chat { grid-area: chat; padding: 10px 16px 12px; background: var(--surface); border-top: 1px solid var(--line); }
+  aside { grid-area: side; overflow-y: auto; padding: 14px 16px 24px; background: var(--surface); border-left: 1px solid var(--line); }
+  aside > section + section { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  @media (max-width: 900px) {
+    .app { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 58vh auto auto;
+           grid-template-areas: "top" "view" "chat" "side"; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+
+  /* Header */
+  .brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .brand strong { font-size: 16px; }
+  .brand span { overflow-wrap: anywhere; }
+  .spacer { flex: 1; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .badge.real, .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.mock, .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.err { background: var(--err-bg); color: var(--err); }
+  .badge.live { background: var(--live-bg); color: var(--live); }
+  .badge.off { background: var(--surface-2); color: var(--muted); }
+  .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .segmented button { padding: 5px 12px; border: 0; background: var(--surface); cursor: pointer; }
+  .segmented button + button { border-left: 1px solid var(--line); }
+  .segmented button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .segmented button:disabled { color: var(--muted); cursor: not-allowed; }
+  .button { padding: 5px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
+  .button:hover { background: var(--surface-2); }
+  .button.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+  .button:disabled { opacity: .55; cursor: not-allowed; }
+
+  /* Viewport */
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; outline: none; }
+  canvas:active { cursor: grabbing; }
+  canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+  .mode-tag { position: absolute; top: 12px; left: 12px; padding: 3px 9px; border-radius: 6px; font-size: 12px; font-weight: 650;
+              letter-spacing: .04em; text-transform: uppercase; background: var(--surface); border: 1px solid var(--line); }
+  .status { position: absolute; left: 12px; right: 12px; bottom: 12px; pointer-events: none; }
+  .status > div { display: inline-block; max-width: 100%; padding: 6px 10px; border-radius: 8px; background: var(--surface);
+                  border: 1px solid var(--line); }
+  .status small { display: block; color: var(--muted); }
+  .overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: var(--viewport); }
+  .overlay[hidden] { display: none; }
+  .overlay .card { max-width: 440px; padding: 16px 18px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
+  .overlay .card.error { text-align: left; border-color: var(--err); }
+  .overlay code { display: block; margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); font-size: 12px; overflow-wrap: anywhere; }
+  .spinner { width: 22px; height: 22px; margin: 0 auto 8px; border: 3px solid var(--line); border-top-color: var(--accent);
+             border-radius: 50%; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+  /* Chat */
+  .chat-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 6px; }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .chip { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); font-size: 12.5px; cursor: pointer; }
+  .chip:hover:not(:disabled) { border-color: var(--accent); }
+  .chip:disabled { color: var(--muted); cursor: not-allowed; }
+  .chat-row { display: flex; gap: 8px; }
+  .chat-row input { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+  .chat-answer { max-height: 28vh; overflow-y: auto; }
+  .chat-answer:not(:empty) { margin-top: 10px; }
+  .chat-answer .answer { margin: 0 0 8px; }
+  .evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 640px) { .evidence-grid { grid-template-columns: 1fr; } }
+  .evidence { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+  .evidence h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .evidence ul { margin: 0; padding-left: 18px; }
+  .error-text { color: var(--err); }
+
+  /* Inspection panel */
+  .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
+  .legend-head, .class-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) 62px 62px; align-items: center; gap: 8px; }
+  .legend-head { padding: 0 8px 2px; font-size: 11px; color: var(--muted); }
+  .legend-head span:nth-child(n+3), .class-row .count { text-align: right; }
+  .class-row { width: 100%; padding: 5px 8px; margin: 1px 0; text-align: left; background: none; border: 1px solid transparent;
+               border-radius: 7px; cursor: pointer; }
+  .class-row:hover { background: var(--surface-2); }
+  .class-row[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-2); }
+  .class-row .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .class-row .count.zero { opacity: .55; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgb(0 0 0 / .18); }
+  .link { padding: 0; border: 0; background: none; color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; }
+  .stat { padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
+  .stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .card { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+  .card + .card { margin-top: 8px; }
+  .card .title { font-weight: 600; }
+  dl { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 4px 10px; margin: 8px 0 0; font-size: 12.5px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--accent); font-size: 12.5px; }
+  table { width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  td { padding: 2px 0; }
+  td.value { width: 46px; padding-right: 8px; text-align: right; }
+  td.barcell { width: 84px; }
+  .bar { height: 7px; border-radius: 2px; background: var(--accent); }
+  ul.limits { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
+  ul.limits li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><strong>MeshPilot</strong><span id="mesh-name" class="muted"></span></div>
+    <span id="badge" class="badge" hidden></span>
+    <label id="picker" class="small" hidden>Prediction <select id="prediction"></select></label>
+    <div class="spacer"></div>
+    <div class="segmented" role="group" aria-label="What the face colours show">
+      <button type="button" data-layer="original" aria-pressed="false">Original mesh</button>
+      <button type="button" data-layer="predicted" aria-pressed="true">Prediction</button>
+      <button type="button" data-layer="truth" aria-pressed="false">Ground truth</button>
+    </div>
+    <button type="button" id="reset" class="button" title="Reset the camera (or double-click the view, or press 0)">Reset view</button>
+  </header>
+
+  <section id="view" aria-label="3D view">
+    <canvas id="canvas" tabindex="0" aria-label="3D view of the mesh. Drag or use the arrow keys to rotate; scroll, or plus and minus, to zoom; 0 resets."></canvas>
+    <div id="mode-tag" class="mode-tag" hidden></div>
+    <div class="status"><div><b id="caption">Loading…</b><small>Drag to rotate · scroll to zoom · double-click to reset</small></div></div>
+    <div id="overlay" class="overlay" role="status"><div class="card"><div class="spinner"></div><p>Loading the mesh and its prediction…</p></div></div>
+  </section>
+
+  <section id="chat" aria-label="Ask about this mesh">
+    <div class="chat-head"><h2>Ask about this mesh</h2><span id="provider" class="badge off">Chat off</span><span id="chat-status" class="muted small"></span></div>
+    <div id="presets" class="presets"></div>
+    <form id="chat-form" class="chat-row">
+      <input id="question" type="text" maxlength="2000" autocomplete="off" aria-label="Question"
+             placeholder="For example: show the faces predicted as Fillet">
+      <button type="submit" id="ask" class="button primary">Ask</button>
+    </form>
+    <div id="chat-answer" class="chat-answer" aria-live="polite"></div>
+  </section>
+
+  <aside aria-label="Inspection">
+    <section>
+      <div class="section-head">
+        <h2>Predicted classes</h2>
+        <label class="switch" title="Hide every face outside the highlighted class"><input type="checkbox" id="isolate"> Isolate</label>
+      </div>
+      <p id="dataset-note" class="muted small"></p>
+      <p class="muted small">Click a class to highlight the faces predicted as it. <button type="button" id="clear" class="link" hidden>Show all</button></p>
+      <div class="legend-head"><span></span><span>Class</span><span>Predicted</span><span id="labelled-head">Labelled</span></div>
+      <div id="legend"></div>
+    </section>
+
+    <section>
+      <h2>This mesh</h2>
+      <div id="single-mesh"></div>
+    </section>
+
+    <section>
+      <h2>Model and verification</h2>
+      <div id="model-card"></div>
+    </section>
+
+    <section>
+      <h2>Limitations</h2>
+      <ul id="limitations" class="limits"></ul>
+    </section>
+  </aside>
+</div>
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const NEUTRAL = [196, 196, 190]; // the original mesh, without labels
+const GHOST = [150, 150, 145];   // faces outside a highlight, drawn translucent
+const GHOST_ALPHA = 0.16;        // so highlighted faces inside the part stay visible
+
+let data = null;             // the prediction served by /predictions/{id}
+let currentId = null;        // its id, sent with chat questions
+let layer = "predicted";     // "original" | "predicted" | "truth"
+let highlight = null;        // {mask, color, caption, cls} or null
+let isolate = false;         // hide, rather than ghost, the faces outside a highlight
+let chatOn = false;
+let faceCount = 0;
+let radius = 1;
+let yaw = 0.7, pitch = 0.45, distance = 2.8;
+
+// ---------------------------------------------------------------- small helpers
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+const fmt = (x, digits = 3) => (x === null || x === undefined ? "–" : x.toFixed(digits));
+const short = (hash) => (hash ? hash.slice(0, 12) + "…" : "–");
+const rgb = (c) => `rgb(${c[0]} ${c[1]} ${c[2]})`;
+const plural = (n, one, many) => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function normalize(v) { const n = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / n, v[1] / n, v[2] / n]; }
+
+// 4x4 matrices, column-major as WebGL expects.
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  return [f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0];
+}
+function lookAt(eye, target, up) {
+  const z = normalize(sub(eye, target)), x = normalize(cross(up, z)), y = cross(z, x);
+  return [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, eye), -dot(y, eye), -dot(z, eye), 1];
+}
+function multiply(a, b) {
+  const out = new Array(16).fill(0);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) out[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
+  return out;
+}
+
+// ---------------------------------------------------------------- WebGL
+// Every face has its own three vertices, so each face shows one flat colour.
+// Opaque faces are drawn first; translucent (ghosted) faces in a second pass;
+// faces with alpha 0 (isolation) are not drawn at all.
+const canvas = $("canvas");
+const gl = canvas.getContext("webgl", { antialias: true, alpha: true, premultipliedAlpha: false });
+const VERTEX_SHADER = `
+  attribute vec3 position; attribute vec3 normal; attribute vec4 color;
+  uniform mat4 mvp; varying vec3 vNormal; varying vec4 vColor;
+  void main() { gl_Position = mvp * vec4(position, 1.0); vNormal = normal; vColor = color; }`;
+const FRAGMENT_SHADER = `
+  precision mediump float;
+  uniform vec3 light; uniform bool translucentPass; varying vec3 vNormal; varying vec4 vColor;
+  void main() {
+    if (vColor.a < 0.01 || (vColor.a < 0.999) != translucentPass) discard;
+    float lit = abs(dot(normalize(vNormal), light));  // two-sided: face orientation is not guaranteed
+    gl_FragColor = vec4(vColor.rgb * (0.38 + 0.62 * lit), vColor.a);
+  }`;
+
+function compile(type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+  return shader;
+}
+let program, loc, buffers;
+if (gl) {
+  program = gl.createProgram();
+  gl.attachShader(program, compile(gl.VERTEX_SHADER, VERTEX_SHADER));
+  gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAGMENT_SHADER));
+  gl.linkProgram(program);
+  loc = {
+    position: gl.getAttribLocation(program, "position"),
+    normal: gl.getAttribLocation(program, "normal"),
+    color: gl.getAttribLocation(program, "color"),
+    mvp: gl.getUniformLocation(program, "mvp"),
+    light: gl.getUniformLocation(program, "light"),
+    translucentPass: gl.getUniformLocation(program, "translucentPass"),
+  };
+  buffers = { position: gl.createBuffer(), normal: gl.createBuffer(), color: gl.createBuffer() };
+}
+function upload(buffer, array) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, array, gl.STATIC_DRAW);
+}
+function bindAttribute(location, buffer, size) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.enableVertexAttribArray(location);
+  gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+}
+
+function setGeometry(mesh) {
+  const P = mesh.positions, T = mesh.triangles;
+  faceCount = T.length / 3;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < P.length; i += 3) {
+    for (let j = 0; j < 3; j++) { lo[j] = Math.min(lo[j], P[i + j]); hi[j] = Math.max(hi[j], P[i + j]); }
+  }
+  const centre = [0, 1, 2].map((j) => (lo[j] + hi[j]) / 2);
+  radius = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2 || 1;
+  const positions = new Float32Array(faceCount * 9), normals = new Float32Array(faceCount * 9);
+  for (let f = 0; f < faceCount; f++) {
+    const corners = [0, 1, 2].map((k) => [0, 1, 2].map((j) => P[3 * T[3 * f + k] + j] - centre[j]));
+    const n = normalize(cross(sub(corners[1], corners[0]), sub(corners[2], corners[0])));
+    for (let k = 0; k < 3; k++) {
+      for (let j = 0; j < 3; j++) { positions[9 * f + 3 * k + j] = corners[k][j]; normals[9 * f + 3 * k + j] = n[j]; }
+    }
+  }
+  upload(buffers.position, positions);
+  upload(buffers.normal, normals);
+}
+
+// [r, g, b, alpha] of a face, with r, g and b from 0 to 255 and alpha from 0 to 1.
+function faceColor(f) {
+  if (highlight) {
+    if (highlight.mask[f]) return [...highlight.color, 1];
+    return isolate ? [0, 0, 0, 0] : [...GHOST, GHOST_ALPHA];
+  }
+  if (layer === "original") return [...NEUTRAL, 1];
+  const label = (layer === "truth" ? data.ground_truth.labels : data.predicted.labels)[f];
+  return [...(label < 0 ? data.unlabeled_color : data.class_colors[label]), 1];
+}
+
+function updateColors() {
+  const colors = new Float32Array(faceCount * 12);
+  for (let f = 0; f < faceCount; f++) {
+    const c = faceColor(f);
+    for (let k = 0; k < 3; k++) {
+      for (let j = 0; j < 3; j++) colors[12 * f + 4 * k + j] = c[j] / 255;
+      colors[12 * f + 4 * k + 3] = c[3];
+    }
+  }
+  upload(buffers.color, colors);
+  renderModeState();
+  requestDraw();
+}
+
+let pendingFrame = 0;
+function requestDraw() { if (gl && !pendingFrame) pendingFrame = requestAnimationFrame(draw); }
+function draw() {
+  pendingFrame = 0;
+  const scale = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(canvas.clientWidth * scale)), h = Math.max(1, Math.round(canvas.clientHeight * scale));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  if (!faceCount) return;
+  const d = radius * distance;
+  // Z up, as in CAD.
+  const eye = [d * Math.cos(pitch) * Math.cos(yaw), d * Math.cos(pitch) * Math.sin(yaw), d * Math.sin(pitch)];
+  const near = Math.max(d - 1.5 * radius, 0.01 * d), far = d + 1.5 * radius;
+  const mvp = multiply(perspective(Math.PI / 4, w / h, near, far), lookAt(eye, [0, 0, 0], [0, 0, 1]));
+  gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(program);
+  bindAttribute(loc.position, buffers.position, 3);
+  bindAttribute(loc.normal, buffers.normal, 3);
+  bindAttribute(loc.color, buffers.color, 4);
+  gl.uniformMatrix4fv(loc.mvp, false, new Float32Array(mvp));
+  gl.uniform3fv(loc.light, normalize(eye));
+  // Opaque faces first, writing depth; then translucent faces blended over them.
+  gl.disable(gl.BLEND);
+  gl.depthMask(true);
+  gl.uniform1i(loc.translucentPass, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, faceCount * 3);
+  if (highlight && !isolate) {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.uniform1i(loc.translucentPass, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, faceCount * 3);
+    gl.depthMask(true);
+  }
+}
+
+// ---------------------------------------------------------------- camera controls
+function orbit(dYaw, dPitch, zoom = 1) {
+  yaw += dYaw;
+  pitch = Math.min(1.5, Math.max(-1.5, pitch + dPitch));
+  distance = Math.min(20, Math.max(1.1, distance * zoom));
+  requestDraw();
+}
+function resetView() { yaw = 0.7; pitch = 0.45; distance = 2.8; requestDraw(); }
+let drag = null;
+canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  orbit(-(e.clientX - drag.x) * 0.01, (e.clientY - drag.y) * 0.01);
+  drag = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener("pointerup", () => { drag = null; });
+canvas.addEventListener("pointercancel", () => { drag = null; });
+canvas.addEventListener("wheel", (e) => { e.preventDefault(); orbit(0, 0, Math.exp(e.deltaY * 0.001)); }, { passive: false });
+canvas.addEventListener("dblclick", resetView);
+canvas.addEventListener("keydown", (e) => {
+  const keys = { ArrowLeft: [0.1, 0], ArrowRight: [-0.1, 0], ArrowUp: [0, 0.1], ArrowDown: [0, -0.1] };
+  if (keys[e.key]) orbit(...keys[e.key]);
+  else if (e.key === "+" || e.key === "=") orbit(0, 0, 0.9);
+  else if (e.key === "-") orbit(0, 0, 1 / 0.9);
+  else if (e.key === "0") resetView();
+  else return;
+  e.preventDefault();
+});
+window.addEventListener("resize", requestDraw);
+$("reset").addEventListener("click", resetView);
+
+// ---------------------------------------------------------------- modes and highlighting
+const MODES = {
+  original: { tag: "Original mesh", caption: "Original mesh: no labels shown." },
+  predicted: { tag: "Prediction", caption: "Prediction: each face coloured by the class the model predicted." },
+  truth: { tag: "Ground truth", caption: "Ground truth: the dataset's labels, not the model's predictions." },
+};
+
+function setLayer(name) {
+  layer = name;
+  highlight = null;
+  renderLegend();
+  updateColors();
+}
+
+// Shows the given faces in one colour; every other face is ghosted, or hidden
+// when "Isolate" is on. The chat's geometry tool drives this too, through the
+// face ids in its structured result.
+function setHighlight(faceIds, color, text, cls = null) {
+  const mask = new Uint8Array(faceCount);
+  for (const f of faceIds) if (f >= 0 && f < faceCount) mask[f] = 1;
+  highlight = { mask, color, caption: text, cls };
+  renderLegend();
+  updateColors();
+}
+function clearHighlight() { highlight = null; renderLegend(); updateColors(); }
+function highlightPredictedClass(c, source = "") {
+  if (highlight && highlight.cls === c && !source) return clearHighlight();
+  const faces = [];
+  data.predicted.labels.forEach((label, f) => { if (label === c) faces.push(f); });
+  setHighlight(faces, data.class_colors[c], `${plural(faces.length, "face", "faces")} predicted as ${data.class_names[c]}${source}`, c);
+}
+
+function renderModeState() {
+  for (const button of document.querySelectorAll(".segmented button")) {
+    button.setAttribute("aria-pressed", String(!highlight && button.dataset.layer === layer));
+  }
+  const tag = $("mode-tag");
+  tag.hidden = false;
+  tag.textContent = highlight ? "Prediction · highlight" : MODES[layer].tag;
+  const mockLabels = data.mock && (highlight || layer === "predicted");  // no model ran: never call it one
+  if (mockLabels) tag.textContent = `MOCK ${tag.textContent.toLowerCase()}`;
+  $("caption").textContent = highlight
+    ? `${highlight.caption}; other faces ${isolate ? "hidden" : "translucent"}.`
+    : mockLabels ? "MOCK labels: each face coloured by a geometric rule. No model ran." : MODES[layer].caption;
+  $("clear").hidden = !highlight;
+}
+
+for (const button of document.querySelectorAll(".segmented button")) {
+  button.addEventListener("click", () => setLayer(button.dataset.layer));
+}
+$("isolate").addEventListener("change", (event) => { isolate = event.target.checked; updateColors(); });
+$("clear").addEventListener("click", clearHighlight);
+
+// ---------------------------------------------------------------- inspection panel
+function renderLegend() {
+  const truth = data.ground_truth;
+  $("labelled-head").textContent = truth ? "Labelled" : "";
+  $("legend").replaceChildren(...data.class_names.map((name, c) => {
+    const predicted = data.predicted.face_counts[name];
+    const button = el("button", { type: "button", className: "class-row", onclick: () => highlightPredictedClass(c) },
+      el("span", { className: "swatch", style: `background:${rgb(data.class_colors[c])}` }),
+      el("span", { textContent: name }),
+      el("span", { className: "count" + (predicted ? "" : " zero"), textContent: predicted.toLocaleString("en") }),
+      el("span", { className: "count", textContent: truth ? truth.face_counts[name].toLocaleString("en") : "" }));
+    button.setAttribute("aria-pressed", String(Boolean(highlight && highlight.cls === c)));
+    button.title = `Highlight the faces predicted as ${name}`;
+    return button;
+  }));
+}
+
+function iouTable(perClass) {
+  return el("table", {}, ...data.class_names.filter((name) => name in perClass).map((name) => {
+    const iou = perClass[name], c = data.class_names.indexOf(name);
+    return el("tr", {},
+      el("td", { style: "width:20px" }, el("span", { className: "swatch", style: `display:inline-block;background:${rgb(data.class_colors[c])}` })),
+      el("td", { textContent: name }),
+      el("td", { className: "value", textContent: fmt(iou) }),
+      el("td", { className: "barcell" }, el("div", { className: "bar", style: `width:${Math.round(iou * 100)}%` })));
+  }));
+}
+
+function renderSingleMesh() {
+  const truth = data.ground_truth;
+  if (!truth) {
+    $("single-mesh").replaceChildren(el("p", { className: "muted small", textContent: "This mesh has no dataset labels, so there are no scores for it." }));
+    return;
+  }
+  const s = truth.single_mesh_scores;
+  $("single-mesh").replaceChildren(
+    el("div", { className: "stats" },
+      el("div", { className: "stat" }, el("b", { textContent: fmt(s.accuracy) }), el("span", { textContent: `face accuracy (${s.scored_faces.toLocaleString("en")} faces)` })),
+      el("div", { className: "stat" }, el("b", { textContent: fmt(s.mean_iou) }), el("span", { textContent: `mean IoU (${Object.keys(s.per_class_iou).length} classes present)` }))),
+    el("p", { className: "muted small", textContent: s.note }),
+    el("details", {}, el("summary", { textContent: "IoU per class on this mesh" }), iouTable(s.per_class_iou)));
+}
+
+function renderModelCard() {
+  if (data.mock) {  // no model ran: say so instead of showing model details
+    $("model-card").replaceChildren(el("div", { className: "card" },
+      el("span", { className: "badge mock", textContent: "MOCK: no model ran" }),
+      el("p", { className: "small", textContent: data.mock_rule || "These labels are mock data for UI development." })));
+    return;
+  }
+  const m = data.model, mesh = data.mesh, p = data.preprocessing, s = data.software, b = data.benchmark;
+  const card = el("div", { className: "card" },
+    el("p", { className: "title", textContent: `DiffusionNet · ${m.input_features.toUpperCase()} input · ${m.n_class} classes` }),
+    el("p", { className: "small", textContent: `${m.checkpoint} · epoch ${m.epochs_completed} of ${m.epochs_planned}` }),
+    el("p", { className: "small muted", textContent: m.chosen_by_test_miou
+      ? "This checkpoint was chosen by its test mIoU, so its test scores are optimistic."
+      : "Final epoch: not chosen by looking at the test set." }));
+
+  const verification = el("div", { className: "card" });
+  if (!b) {
+    verification.append(el("span", { className: "badge warn", textContent: "Not verified" }),
+      el("p", { className: "small muted", textContent: "No meshpilot.verify result for this checkpoint. Run it to compare this inference path with the training run." }));
+  } else {
+    const check = b.mesh_check || {};
+    const differences = Object.values(check.max_relative_difference || {});
+    verification.append(
+      el("span", { className: `badge ${b.agrees ? "ok" : "err"}`, textContent: b.agrees ? "Matches the training run" : "Does not match the training run" }),
+      el("p", { className: "small", textContent:
+        `On the ${b.test_split.meshes.toLocaleString("en")}-mesh test split, meshpilot.verify measured mIoU ${fmt(b.measured.mean_iou, 4)} ` +
+        `(recorded in training: ${fmt(b.recorded_in_history.mean_iou, 4)}) and face accuracy ${fmt(b.measured.accuracy, 4)} ` +
+        `(recorded: ${fmt(b.recorded_in_history.accuracy, 4)}).` }),
+      check.stem ? el("p", { className: "small", textContent:
+        `Operators recomputed for ${check.stem} match the training cache (largest relative difference ` +
+        `${differences.length ? Math.max(...differences).toExponential(1) : "–"}); ` +
+        `${check.faces_predicted_differently ?? "–"} of ${check.faces ?? "–"} faces are predicted differently.` }) : "",
+      el("p", { className: "small muted", textContent: "These scores describe the whole test split. They are not a confidence for this mesh." }),
+      el("details", {}, el("summary", { textContent: "Test-split IoU per class" }), iouTable(b.measured.per_class_iou)));
+  }
+
+  const rows = [
+    ["Checkpoint", `SHA-256 ${short(m.checkpoint_sha256)}`],
+    ["Run", m.run],
+    ["Input", `${p.input}; k_eig ${m.k_eig}; width ${m.C_width}, ${m.N_block} blocks`],
+    ["Mesh", `${mesh.stem}: ${mesh.faces.toLocaleString("en")} faces, ` +
+      (mesh.split === "test" ? "in the recorded test split (held out from training)" : `split: ${mesh.split}`) +
+      `; SHA-256 ${short(mesh.obj_sha256)}`],
+    ["Preprocessing", `${p.mesh_reader}. ${p.normalisation}. ${p.operators}.`],
+    ["Library", `diffusion_net copied from the training run (SHA-256 ${short(s.diffusion_net_sha256)})`],
+    ["Software", `torch ${s.torch}, numpy ${s.numpy}, scipy ${s.scipy}, potpourri3d ${s.potpourri3d}`],
+  ];
+  const details = el("details", {}, el("summary", { textContent: "Provenance details" }),
+    el("dl", {}, ...rows.flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })])));
+  $("model-card").replaceChildren(card, verification, details);
+}
+
+function renderPanel() {
+  $("mesh-name").textContent = data.mesh.stem;
+  const badge = $("badge");
+  badge.hidden = false;
+  badge.textContent = data.mock ? "MOCK data, for UI development only" : "Real model prediction";
+  badge.className = `badge ${data.mock ? "mock" : "real"}`;
+  document.querySelector('.segmented button[data-layer="truth"]').disabled = !data.ground_truth;
+  $("dataset-note").textContent = data.dataset_note || "What each class means depends on the dataset the model was trained on.";
+  renderLegend();
+  renderSingleMesh();
+  renderModelCard();
+  $("limitations").replaceChildren(...data.limitations.map((text) => el("li", { textContent: text })));
+  renderPresets();
+}
+
+// ---------------------------------------------------------------- loading and errors
+function showOverlay(...content) {
+  $("overlay").replaceChildren(...content);
+  $("overlay").hidden = false;
+}
+function showLoading(text) { showOverlay(el("div", { className: "card" }, el("div", { className: "spinner" }), el("p", { textContent: text }))); }
+function showError(title, message, hint = "") {
+  showOverlay(el("div", { className: "card error" }, el("p", { className: "title", textContent: title }),
+    el("p", { className: "small", textContent: message }), hint ? el("code", { textContent: hint }) : ""));
+  $("caption").textContent = title;
+}
+
+async function getJSON(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => ({}))).detail;
+    throw new Error(detail || `${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+async function load(id) {
+  showLoading("Loading the mesh and its prediction…");
+  try {
+    data = await getJSON("predictions/" + id.split("/").map(encodeURIComponent).join("/"));
+  } catch (error) {
+    showError("Could not load the prediction", error.message);
+    return;
+  }
+  currentId = id;
+  layer = "predicted";
+  highlight = null;
+  $("chat-answer").replaceChildren();
+  setGeometry(data.mesh);
+  renderPanel();
+  updateColors();
+  $("overlay").hidden = true;
+}
+
+async function start() {
+  if (!gl) {
+    showError("WebGL is not available", "This browser cannot draw the mesh. Try a current version of Chrome, Edge or Firefox.");
+    return;
+  }
+  let list;
+  try {
+    list = await getJSON("predictions");
+  } catch (error) {
+    showError("The viewer API did not answer", error.message, "python -m uvicorn meshpilot.api:app --port 8001");
+    return;
+  }
+  if (!list.length) {
+    showError("No predictions yet", "Run meshpilot.predict first; its outputs appear here (see the README, MeshPilot section).",
+      "python -m meshpilot.predict --checkpoint … --stem …");
+    return;
+  }
+  const select = $("prediction");
+  for (const p of list) select.add(new Option(`${p.stem}${p.mock ? " (MOCK)" : ""}`, p.id));
+  $("picker").hidden = list.length < 2;
+  select.addEventListener("change", () => load(select.value));
+  await load(list[0].id);
+  await setUpChat();
+}
+
+// ---------------------------------------------------------------- chat
+// The chat's provider stays visible, so a scripted mock is never mistaken for Claude.
+const PROVIDERS = {
+  claude: (model, cap) => ["live", `Claude API · ${model} · real calls, billed · up to ${cap} requests per question`],
+  perplexity: (model, cap) => ["live", `Perplexity API · ${model} · real calls, billed · up to ${cap} requests per question`],
+  mock: () => ["mock", "MOCK chat · scripted replies, no API calls"],
+};
+const API_NAMES = { claude: "the Claude API", perplexity: "the Perplexity API" };
+
+async function setUpChat() {
+  const health = await getJSON("health").catch(() => null);
+  chatOn = Boolean(health && health.chat);
+  const [kind, label] = chatOn && PROVIDERS[health.chat_provider]
+    ? PROVIDERS[health.chat_provider](health.chat_model, health.chat_max_requests) : ["off", "Chat off"];
+  $("provider").className = `badge ${kind}`;
+  $("provider").textContent = label;
+  $("question").disabled = $("ask").disabled = !chatOn;
+  renderPresets();
+  if (!chatOn) {
+    $("chat-status").textContent = "Off: the chat needs ANTHROPIC_API_KEY or PERPLEXITY_API_KEY in .env. Everything else works without it.";
+  } else if (!health.documents) {
+    $("chat-status").textContent = "Document search is off (no RAG index), so answers use the predictions only.";
+  } else {
+    $("chat-status").textContent = "";
+  }
+}
+
+function renderPresets() {
+  if (!data) return;
+  $("presets").replaceChildren(...data.preset_questions.map((question) => {
+    const chip = el("button", { type: "button", className: "chip", textContent: question, disabled: !chatOn,
+      onclick: () => { $("question").value = question; $("chat-form").requestSubmit(); } });
+    if (!chatOn) chip.title = "The chat needs ANTHROPIC_API_KEY or PERPLEXITY_API_KEY";
+    return chip;
+  }));
+}
+
+function renderReply(reply) {
+  const nodes = [];
+  if (reply.mock) nodes.push(el("p", {}, el("span", { className: "badge mock", textContent: "MOCK reply, for UI development only" })));
+  nodes.push(el("p", { className: "answer", textContent: reply.answer }));
+
+  const model = el("div", { className: "evidence" },
+    el("h3", { textContent: data.mock ? "From the MOCK labels (no model ran)" : "From the model's predictions" }));
+  for (const g of reply.geometry) {
+    const patches = g.patch_sizes.length;
+    model.append(el("p", { className: "small", textContent:
+      `${g.class_name}: ${g.face_count.toLocaleString("en")} of ${g.mesh_face_count.toLocaleString("en")} faces, in ${plural(patches, "patch", "patches")}` +
+      (patches ? ` (largest ${g.patch_sizes.slice(0, 5).join(", ")} faces).` : ".") }));
+  }
+  model.append(el("p", { className: "small muted", textContent: !reply.geometry.length ? "This answer used no model prediction."
+    : data.mock ? data.mock_rule || "MOCK labels, not model predictions." : reply.geometry[0].note }));
+
+  const documents = el("div", { className: "evidence" }, el("h3", { textContent: "From the documents" }));
+  if (reply.document_citations.length) {
+    documents.append(el("ul", { className: "small" }, ...reply.document_citations.map((c) => el("li", { textContent: `${c.title}, page ${c.page}` }))));
+  } else {
+    documents.append(el("p", { className: "small muted",
+      textContent: reply.documents_available ? "No document was cited." : "Document search is off: the RAG index is not built." }));
+  }
+  const tools = reply.tool_calls.map((c) => `${c.tool}(${Object.values(c.input).join(", ")})`).join(", ") || "none";
+  const via = reply.mock ? "a scripted mock, no API call" : API_NAMES[reply.provider] || `the ${reply.provider} API`;
+  const tokens = reply.usage && !reply.mock
+    ? ` · ${reply.usage.input_tokens.toLocaleString("en")} input and ${reply.usage.output_tokens.toLocaleString("en")} output tokens` : "";
+  nodes.push(el("div", { className: "evidence-grid" }, model, documents),
+    el("p", { className: "small muted", textContent: `Answered by ${reply.model} via ${via}${tokens} · tool calls: ${tools}` }));
+  $("chat-answer").replaceChildren(...nodes);
+
+  // The highlight comes from the tool's structured result, never from the answer's text.
+  const last = reply.geometry[reply.geometry.length - 1];
+  if (last) {
+    layer = "predicted";
+    setHighlight(last.face_ids, data.class_colors[last.class_id],
+      `${plural(last.face_count, "face", "faces")} predicted as ${last.class_name}, from the chat`, last.class_id);
+  }
+}
+
+$("chat-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const question = $("question").value.trim();
+  if (!question || !currentId || !chatOn) return;
+  $("ask").disabled = true;
+  $("chat-answer").replaceChildren(el("p", { className: "muted small", textContent: "Thinking…" }));
+  try {
+    const response = await fetch("chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, prediction_id: currentId }),
+    });
+    const reply = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(reply.detail || `${response.status} ${response.statusText}`);
+    renderReply(reply);
+  } catch (error) {
+    $("chat-answer").replaceChildren(el("p", { className: "small error-text", textContent: `The chat failed: ${error.message}` }));
+  } finally {
+    $("ask").disabled = false;
+  }
+});
+
+start();
+</script>
+</body>
+</html>

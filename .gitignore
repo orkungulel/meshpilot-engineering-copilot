@@ -1,0 +1,27 @@
+# Corpus PDFs and built indexes are never committed: the documents are
+# downloaded from their publishers (see corpus/manifest.csv), and no personal
+# or employer documents may enter the repository.
+data/
+
+# Secrets
+.env
+
+# Local preview-server settings (machine-specific paths)
+.claude/launch.json
+
+# MeshPilot: thesis checkpoints, meshes and copied thesis assets stay on the
+# owner's machine until licence and publication permission are confirmed.
+meshpilot_assets/
+/runs_*/
+*.pt
+*.pth
+*.ckpt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+build/
+dist/

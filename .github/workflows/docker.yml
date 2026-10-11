@@ -1,0 +1,34 @@
+name: docker
+
+# Builds and smoke-tests the image whenever the Dockerfile or the dependencies change.
+on:
+  push:
+    paths: [Dockerfile, .dockerignore, pyproject.toml, .github/workflows/docker.yml]
+  pull_request:
+    paths: [Dockerfile, .dockerignore, pyproject.toml, .github/workflows/docker.yml]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build the image
+        run: docker build -t rag .
+      - name: The code imports, the viewer page is included and the embedding model loads without network access
+        run: |
+          docker run --rm --network none rag python -c "
+          from rag.embeddings import Embedder
+          import rag.api, rag.cli, meshpilot.api
+          assert meshpilot.api.VIEWER_PAGE.is_file(), meshpilot.api.VIEWER_PAGE
+          vector = Embedder('BAAI/bge-small-en-v1.5').embed_query('allowable bearing pressure')
+          assert vector.shape == (384,), vector.shape
+          print('ok', vector.shape)"
+      - name: No checkpoint, mesh, prediction or secret is in the image
+        run: |
+          docker run --rm --network none rag sh -c '! find /app /home/app \( -name "*.pt" -o -name "*.pth" -o -name "*.ckpt" -o -name "*.obj" -o -name "*.ply" -o -name "*.labels" -o -name "prediction.json" -o -name ".env" -o -name "meshpilot_assets" -o -name "runs_*" \) | grep .'
+      - name: The API refuses to start without an API key, with a clear message
+        run: |
+          if docker run --rm rag > out.log 2>&1; then echo "the API started without a key"; exit 1; fi
+          cat out.log
+          grep -q "ANTHROPIC_API_KEY is not set" out.log

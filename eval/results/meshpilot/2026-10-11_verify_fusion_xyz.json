@@ -1,0 +1,67 @@
+{
+  "what": "meshpilot.verify: the Fusion 360 XYZ final checkpoint rerun on the training run's cached test split",
+  "date": "2026-10-11",
+  "derived_from": {
+    "local_verify_record_sha256": "fa6c6c81f4a0ca4b75c3b683fc8a5b598b2d2a3bf5a1e772a7407a2592c9014f",
+    "note": "Local file paths removed for publication; all values unchanged."
+  },
+  "checkpoint_sha256": "035df536d04dd3992f65187e0815f5b68c59f45aaac08feb7e5398a88ccd5cb9",
+  "epochs_completed": 20,
+  "test_split": {
+    "meshes": 1000,
+    "cache_sha256": "a3b1da6a9f05904d4024de3d5d8215f489523c9f4da5b2c01e7cba1d23f0f6c1",
+    "split_file_sha256": "92993c4677b0b6c5958df3abe07cc37e6e9a54f61a0d68dce8618fe20ec658e1"
+  },
+  "measured": {
+    "scored_faces": 2084706,
+    "mean_iou": 0.23751419019191833,
+    "accuracy": 0.5506963571841785,
+    "per_class_iou": {
+      "ExtrudeSide": 0.5012618639646016,
+      "ExtrudeEnd": 0.4705262146526963,
+      "CutSide": 0.1961006035314442,
+      "CutEnd": 0.18065351857249262,
+      "Fillet": 0.058556398278240586,
+      "Chamfer": 0.11611727795832806,
+      "RevolveSide": 0.14762883195763288,
+      "RevolveEnd": 0.22926881261991047
+    }
+  },
+  "recorded_in_history": {
+    "mean_iou": 0.23751421516243393,
+    "accuracy": 0.5506963571841785,
+    "per_class_iou": {
+      "ExtrudeSide": 0.5012614688841616,
+      "ExtrudeEnd": 0.4705268094972611,
+      "CutSide": 0.1961006035314442,
+      "CutEnd": 0.18065351857249262,
+      "Fillet": 0.058556398278240586,
+      "Chamfer": 0.11611727795832806,
+      "RevolveSide": 0.14762883195763288,
+      "RevolveEnd": 0.22926881261991047
+    }
+  },
+  "tolerances": {
+    "operators_relative": 0.0001,
+    "scores": 1e-06
+  },
+  "mesh_check": {
+    "stem": "23910_316134bd_3",
+    "cache_index": 478,
+    "faces_identical": true,
+    "labels_identical": true,
+    "max_relative_difference": {
+      "verts": 0.0,
+      "frames": 2.384185791015625e-07,
+      "mass": 0.0,
+      "L": 0.0,
+      "evals": 0.0,
+      "gradX": 2.475347443575407e-07,
+      "gradY": 2.9043115682654507e-07,
+      "evecs (projector)": 0.0
+    },
+    "faces": 2230,
+    "faces_predicted_differently": 0
+  },
+  "agrees": true
+}

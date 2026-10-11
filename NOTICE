@@ -1,0 +1,21 @@
+Engineering document QA and MeshPilot
+Copyright 2026 Orkun Gülel
+
+This repository contains original work only: source code, tests,
+documentation and measurement records. That original work is licensed under
+the Apache License, Version 2.0 (see LICENSE).
+
+The Apache License does not cover datasets, pretrained checkpoints,
+generated outputs or third-party assets. None of them is included in this
+repository, and each remains subject to its own licence or terms. They
+include:
+- the Fusion 360 Gallery data;
+- the thesis DiffusionNet checkpoints;
+- the diffusion_net library;
+- the embedding model;
+- the engineering manuals.
+
+The PDF/RAG pipeline uses PyMuPDF, which is distributed under AGPL-3.0 or a
+commercial licence from Artifex. PyMuPDF is installed as a dependency and is
+not part of this repository. Users must review the applicable licence before
+redistribution or deployment. This project publishes no Docker image.
